@@ -1,0 +1,87 @@
+
+name: Build ToDo4ToDay APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'source.zip'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Check and extract source
+        run: |
+          test -f source.zip
+          mkdir -p app
+          unzip -o source.zip -d app
+
+      - name: Generate Android project
+        working-directory: app
+        run: |
+          flutter create . \
+            --project-name todo4today \
+            --org com.rtna.todo4today \
+            --platforms=android
+
+      - name: Set application name
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path("app/android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+
+          s, n = re.subn(
+              r'android:label="[^"]*"',
+              'android:label="ToDo4ToDay"',
+              s,
+              count=1
+          )
+
+          if n != 1:
+              raise SystemExit("Application name not found")
+
+          p.write_text(s)
+          PY
+
+      - name: Install dependencies and generate icon
+        working-directory: app
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons
+
+      - name: Build APK
+        working-directory: app
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          cp app/build/app/outputs/flutter-apk/app-release.apk \
+             app/build/app/outputs/flutter-apk/ToDo4ToDay.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ToDo4ToDay-APK
+          path: app/build/app/outputs/flutter-apk/ToDo4ToDay.apk
